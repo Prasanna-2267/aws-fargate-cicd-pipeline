@@ -20,11 +20,23 @@ function sendJSON(res, statusCode, data) {
 }
 
 const server = http.createServer(async (req, res) => {
+
     // Basic health check
     if (req.method === "GET" && req.url === "/") {
         return sendJSON(res, 200, {
             message: "Hello from AWS EC2!",
             status: "success"
+        });
+    }
+
+    // API version endpoint - CI/CD deployment verification
+    if (req.method === "GET" && req.url === "/api/version") {
+        return sendJSON(res, 200, {
+            application: "AWS Node API",
+            version: "1.1.0",
+            deployment: "GitHub Actions + AWS ECS",
+            status: "success",
+            message: "Successfully deployed through CI/CD!"
         });
     }
 
@@ -133,6 +145,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // Route not found
     return sendJSON(res, 404, {
         error: "Route not found"
     });
