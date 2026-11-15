@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 permissions:
@@ -26,38 +25,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Download repository source code
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      # 3. Install dependencies
       - name: Install dependencies
         run: npm ci
 
-      # 4. Validate JavaScript syntax
       - name: Check JavaScript syntax
         run: node --check server.js
 
-      # 5. Diagnose GitHub OIDC token claims
-      # Prints only iss, aud and sub. Never prints the token itself.
+      # Diagnose OIDC claims without printing the actual token
       - name: Diagnose GitHub OIDC claims
         shell: bash
-        env:
-          OIDC_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
-          OIDC_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
           set -euo pipefail
 
           RESPONSE=$(curl -sS \
-            -H "Authorization: bearer ${OIDC_REQUEST_TOKEN}" \
-            "${OIDC_REQUEST_URL}&audience=sts.amazonaws.com")
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.value')
 
@@ -74,7 +65,7 @@ jobs:
             Buffer.from(token.split(".")[1], "base64url").toString()
           );
 
-          console.log("GitHub OIDC claims:");
+          console.log("OIDC claims:");
           console.log(JSON.stringify({
             iss: payload.iss,
             aud: payload.aud,
@@ -84,7 +75,6 @@ jobs:
 
           unset TOKEN OIDC_TOKEN
 
-      # 6. Authenticate GitHub Actions with AWS using OIDC
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -92,16 +82,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
-      # 7. Verify AWS identity
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
-      # 8. Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 9. Build and push Docker image
       - name: Build and push image
         id: build-image
         env:
@@ -116,7 +103,6 @@ jobs:
 
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      # 10. Update image in ECS task definition
       - name: Render ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
@@ -125,7 +111,6 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
-      # 11. Deploy updated task definition to ECS
       - name: Deploy to Amazon ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
